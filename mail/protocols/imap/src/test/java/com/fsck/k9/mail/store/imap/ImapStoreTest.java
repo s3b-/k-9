@@ -16,8 +16,7 @@ import android.net.ConnectivityManager;
 
 import com.fsck.k9.mail.AuthType;
 import com.fsck.k9.mail.ConnectionSecurity;
-import com.fsck.k9.mail.Folder;
-import com.fsck.k9.mail.Folder.FolderType;
+import com.fsck.k9.mail.FolderType;
 import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.oauth.OAuth2TokenProvider;
 import com.fsck.k9.mail.ssl.TrustedSocketFactory;
@@ -57,7 +56,7 @@ public class ImapStoreTest {
 
     @Test
     public void getFolder_shouldReturnImapFolderInstance() throws Exception {
-        Folder result = imapStore.getFolder("INBOX");
+        ImapFolder result = imapStore.getFolder("INBOX");
 
         assertEquals(ImapFolder.class, result.getClass());
     }
@@ -65,9 +64,9 @@ public class ImapStoreTest {
     @Test
     public void getFolder_calledTwice_shouldReturnFirstInstance() throws Exception {
         String folderName = "Trash";
-        Folder imapFolder = imapStore.getFolder(folderName);
+        ImapFolder imapFolder = imapStore.getFolder(folderName);
 
-        Folder result = imapStore.getFolder(folderName);
+        ImapFolder result = imapStore.getFolder(folderName);
 
         assertEquals(imapFolder, result);
     }
@@ -168,7 +167,7 @@ public class ImapStoreTest {
         when(imapConnection.executeSimpleCommand("LIST \"\" \"*\"")).thenReturn(imapResponses);
         imapStore.enqueueImapConnection(imapConnection);
 
-        List<? extends Folder> result = imapStore.getPersonalNamespaces();
+        List<ImapFolder> result = imapStore.getPersonalNamespaces();
 
         assertNotNull(result);
         assertEquals(Sets.newSet("INBOX", "Folder.SubFolder"), extractFolderNames(result));
@@ -196,7 +195,7 @@ public class ImapStoreTest {
         when(imapConnection.executeSimpleCommand("LIST \"\" \"*\"")).thenReturn(imapResponses);
         imapStore.enqueueImapConnection(imapConnection);
 
-        List<? extends Folder> result = imapStore.getPersonalNamespaces();
+        List<ImapFolder> result = imapStore.getPersonalNamespaces();
 
         assertNotNull(result);
         assertEquals(Sets.newSet("INBOX", "Folder.SubFolder"), extractFolderNames(result));
@@ -239,6 +238,31 @@ public class ImapStoreTest {
 
         assertNotNull(result);
         assertEquals(Sets.newSet("INBOX", "FolderOne"), extractFolderNames(result));
+    }
+
+    @Test
+    public void getPersonalNamespaces_withDuplicateFolderNames_shouldRemoveDuplicatesAndKeepFolderType()
+            throws Exception {
+        ImapConnection imapConnection = mock(ImapConnection.class);
+        when(imapConnection.hasCapability(Capabilities.LIST_EXTENDED)).thenReturn(true);
+        when(imapConnection.hasCapability(Capabilities.SPECIAL_USE)).thenReturn(true);
+        List<ImapResponse> imapResponses = Arrays.asList(
+                createImapResponse("* LIST () \".\" \"INBOX\""),
+                createImapResponse("* LIST (\\HasNoChildren) \".\" \"Junk\""),
+                createImapResponse("* LIST (\\Junk) \".\" \"Junk\""),
+                createImapResponse("* LIST (\\HasNoChildren) \".\" \"Junk\""),
+                createImapResponse("5 OK Success")
+        );
+        when(imapConnection.executeSimpleCommand("LIST \"\" \"*\" RETURN (SPECIAL-USE)")).thenReturn(imapResponses);
+        imapStore.enqueueImapConnection(imapConnection);
+
+        List<ImapFolder> result = imapStore.getPersonalNamespaces();
+
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        ImapFolder junkFolder = getFolderByName(result, "Junk");
+        assertNotNull(junkFolder);
+        assertEquals(FolderType.SPAM, junkFolder.getType());
     }
 
     @Test
@@ -358,13 +382,22 @@ public class ImapStoreTest {
         return storeConfig;
     }
 
-    private Set<String> extractFolderNames(List<? extends Folder> folders) {
+    private Set<String> extractFolderNames(List<ImapFolder> folders) {
         Set<String> folderNames = new HashSet<>(folders.size());
-        for (Folder folder : folders) {
+        for (ImapFolder folder : folders) {
             folderNames.add(folder.getServerId());
         }
 
         return folderNames;
+    }
+
+    private ImapFolder getFolderByName(List<ImapFolder> result, String folderName) {
+        for (ImapFolder imapFolder : result) {
+            if (imapFolder.getName().equals(folderName)) {
+                return imapFolder;
+            }
+        }
+        return null;
     }
 
     private Map<String, ImapFolder> toFolderMap(List<ImapFolder> folders) {

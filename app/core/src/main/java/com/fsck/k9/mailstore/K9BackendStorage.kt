@@ -2,22 +2,22 @@ package com.fsck.k9.mailstore
 
 import android.content.ContentValues
 import android.database.Cursor
+import android.database.sqlite.SQLiteDatabase
 import androidx.core.database.getStringOrNull
 import com.fsck.k9.Account
 import com.fsck.k9.Preferences
 import com.fsck.k9.backend.api.BackendFolder
 import com.fsck.k9.backend.api.BackendStorage
 import com.fsck.k9.backend.api.FolderInfo
-import com.fsck.k9.mail.Folder.FolderType as RemoteFolderType
+import com.fsck.k9.mail.FolderType as RemoteFolderType
 
 class K9BackendStorage(
-        private val preferences: Preferences,
-        private val account: Account,
-        private val localStore: LocalStore,
-        private val specialFolderUpdater: SpecialFolderUpdater
+    private val preferences: Preferences,
+    private val account: Account,
+    private val localStore: LocalStore,
+    private val listeners: List<BackendStorageListener>
 ) : BackendStorage {
     private val database = localStore.database
-
 
     override fun getFolder(folderServerId: String): BackendFolder {
         return K9BackendFolder(preferences, account, localStore, folderServerId)
@@ -40,9 +40,7 @@ class K9BackendStorage(
         val localFolders = folders.map { localStore.getFolder(it.serverId, it.name, it.type) }
         localStore.createFolders(localFolders, account.displayCount)
 
-        if (folders.any { it.type != FolderType.REGULAR }) {
-            specialFolderUpdater.updateSpecialFolders()
-        }
+        listeners.forEach { it.onFoldersCreated(folders) }
     }
 
     override fun deleteFolders(folderServerIds: List<String>) {
@@ -51,7 +49,7 @@ class K9BackendStorage(
                 .map { localStore.getFolder(it) }
                 .forEach { it.delete() }
 
-        specialFolderUpdater.updateSpecialFolders()
+        listeners.forEach { it.onFoldersDeleted(folderServerIds) }
     }
 
     override fun changeFolder(folderServerId: String, name: String, type: RemoteFolderType) {
@@ -64,14 +62,14 @@ class K9BackendStorage(
             db.update("folders", values, "server_id = ?", arrayOf(folderServerId))
         }
 
-        specialFolderUpdater.updateSpecialFolders()
+        listeners.forEach { it.onFolderChanged(folderServerId, name, type) }
     }
 
     override fun getExtraString(name: String): String? {
         return database.execute(false) { db ->
             val cursor = db.query(
                     "account_extra_values",
-                    arrayOf("value_string"),
+                    arrayOf("value_text"),
                     "name = ?",
                     arrayOf(name),
                     null, null, null)
@@ -88,9 +86,10 @@ class K9BackendStorage(
     override fun setExtraString(name: String, value: String) {
         database.execute(false) { db ->
             val contentValues = ContentValues().apply {
-                put("value_string", value)
+                put("name", name)
+                put("value_text", value)
             }
-            db.update("account_extra_values", contentValues, "name = ?", arrayOf(name))
+            db.insertWithOnConflict("account_extra_values", null, contentValues, SQLiteDatabase.CONFLICT_REPLACE)
         }
     }
 
@@ -115,9 +114,10 @@ class K9BackendStorage(
     override fun setExtraNumber(name: String, value: Long) {
         database.execute(false) { db ->
             val contentValues = ContentValues().apply {
+                put("name", name)
                 put("value_integer", value)
             }
-            db.update("account_extra_values", contentValues, "name = ?", arrayOf(name))
+            db.insertWithOnConflict("account_extra_values", null, contentValues, SQLiteDatabase.CONFLICT_REPLACE)
         }
     }
 

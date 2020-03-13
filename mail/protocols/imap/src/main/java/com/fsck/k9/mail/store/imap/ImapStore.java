@@ -19,12 +19,11 @@ import androidx.annotation.Nullable;
 import com.fsck.k9.mail.AuthType;
 import com.fsck.k9.mail.ConnectionSecurity;
 import com.fsck.k9.mail.Flag;
-import com.fsck.k9.mail.Folder.FolderType;
+import com.fsck.k9.mail.FolderType;
 import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.NetworkType;
 import com.fsck.k9.mail.oauth.OAuth2TokenProvider;
 import com.fsck.k9.mail.ssl.TrustedSocketFactory;
-import com.fsck.k9.mail.store.RemoteStore;
 import com.fsck.k9.mail.store.StoreConfig;
 import timber.log.Timber;
 
@@ -35,7 +34,9 @@ import timber.log.Timber;
  * TODO Need a default response handler for things like folder updates
  * </pre>
  */
-public class ImapStore extends RemoteStore {
+public class ImapStore {
+    private final StoreConfig storeConfig;
+    private final TrustedSocketFactory trustedSocketFactory;
     private Set<Flag> permanentFlagsIndex = EnumSet.noneOf(Flag.class);
     private ConnectivityManager connectivityManager;
     private OAuth2TokenProvider oauthTokenProvider;
@@ -65,7 +66,8 @@ public class ImapStore extends RemoteStore {
     public ImapStore(ImapStoreSettings serverSettings, StoreConfig storeConfig,
             TrustedSocketFactory trustedSocketFactory, ConnectivityManager connectivityManager,
             OAuth2TokenProvider oauthTokenProvider) {
-        super(storeConfig, trustedSocketFactory);
+        this.storeConfig = storeConfig;
+        this.trustedSocketFactory = trustedSocketFactory;
 
         host = serverSettings.host;
         port = serverSettings.port;
@@ -85,7 +87,6 @@ public class ImapStore extends RemoteStore {
         folderNameCodec = FolderNameCodec.newInstance();
     }
 
-    @Override
     public ImapFolder getFolder(String name) {
         ImapFolder folder;
         synchronized (folderCache) {
@@ -119,14 +120,13 @@ public class ImapStore extends RemoteStore {
         return combinedPrefix;
     }
 
-    @Override
     public List<ImapFolder> getPersonalNamespaces() throws MessagingException {
         ImapConnection connection = getConnection();
 
         try {
             List<FolderListItem> folders = listFolders(connection, false);
 
-            if (!mStoreConfig.isSubscribedFoldersOnly()) {
+            if (!storeConfig.isSubscribedFoldersOnly()) {
                 return getFolders(folders);
             }
 
@@ -179,7 +179,7 @@ public class ImapStore extends RemoteStore {
                 ListResponse.parseLsub(responses) :
                 ListResponse.parseList(responses);
 
-        List<FolderListItem> folders = new ArrayList<>(listResponses.size());
+        Map<String, FolderListItem> folderMap = new HashMap<>(listResponses.size());
         for (ListResponse listResponse : listResponses) {
             String decodedFolderName;
             try {
@@ -204,7 +204,7 @@ public class ImapStore extends RemoteStore {
 
             if (ImapFolder.INBOX.equalsIgnoreCase(folder)) {
                 continue;
-            } else if (folder.equals(mStoreConfig.getOutboxFolder())) {
+            } else if (folder.equals(storeConfig.getOutboxFolder())) {
                 /*
                  * There is a folder on the server with the same name as our local
                  * outbox. Until we have a good plan to deal with this situation
@@ -235,10 +235,15 @@ public class ImapStore extends RemoteStore {
                 type = FolderType.REGULAR;
             }
 
-            folders.add(new FolderListItem(folder, type));
+            FolderListItem existingItem = folderMap.get(folder);
+            if (existingItem == null || existingItem.getType() == FolderType.REGULAR) {
+                folderMap.put(folder, new FolderListItem(folder, type));
+            }
         }
 
+        List<FolderListItem> folders = new ArrayList<>(folderMap.size() + 1);
         folders.add(new FolderListItem(ImapFolder.INBOX, FolderType.INBOX));
+        folders.addAll(folderMap.values());
 
         return folders;
     }
@@ -260,7 +265,6 @@ public class ImapStore extends RemoteStore {
         return folderName.substring(prefixLength);
     }
 
-    @Override
     public void checkSettings() throws MessagingException {
         try {
             ImapConnection connection = createImapConnection();
@@ -307,7 +311,7 @@ public class ImapStore extends RemoteStore {
     ImapConnection createImapConnection() {
         return new ImapConnection(
                 new StoreImapSettings(),
-                mTrustedSocketFactory,
+                trustedSocketFactory,
                 connectivityManager,
                 oauthTokenProvider);
     }
@@ -328,28 +332,8 @@ public class ImapStore extends RemoteStore {
         return imapFolders;
     }
 
-    @Override
-    public boolean isMoveCapable() {
-        return true;
-    }
-
-    @Override
-    public boolean isCopyCapable() {
-        return true;
-    }
-
-    @Override
-    public boolean isPushCapable() {
-        return true;
-    }
-
-    @Override
-    public boolean isExpungeCapable() {
-        return true;
-    }
-
     StoreConfig getStoreConfig() {
-        return mStoreConfig;
+        return storeConfig;
     }
 
     Set<Flag> getPermanentFlagsIndex() {
@@ -395,7 +379,7 @@ public class ImapStore extends RemoteStore {
 
         @Override
         public boolean useCompression(final NetworkType type) {
-            return mStoreConfig.useCompression(type);
+            return storeConfig.useCompression(type);
         }
 
         @Override

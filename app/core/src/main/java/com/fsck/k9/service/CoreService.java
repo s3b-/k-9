@@ -1,6 +1,5 @@
 package com.fsck.k9.service;
 
-import android.annotation.SuppressLint;
 import android.app.Service;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -8,10 +7,7 @@ import android.content.Intent;
 import android.os.IBinder;
 import android.os.PowerManager;
 
-import com.fsck.k9.DI;
 import com.fsck.k9.K9;
-import com.fsck.k9.controller.MessagingController;
-import com.fsck.k9.helper.Utility;
 import com.fsck.k9.power.TracingPowerManager;
 import com.fsck.k9.power.TracingPowerManager.TracingWakeLock;
 
@@ -299,20 +295,11 @@ public abstract class CoreService extends Service {
         Runnable myRunner = new Runnable() {
             public void run() {
                 try {
-                    boolean oldIsSyncDisabled = CoreService.isMailSyncDisabled(context);
-
                     Timber.d("CoreService (%s) running Runnable %d with startId %d",
                             className, runner.hashCode(), startId);
 
                     // Run the supplied code
                     runner.run();
-
-                    // If the sync status changed while runner was executing, notify
-                    // MessagingController
-                    if (CoreService.isMailSyncDisabled(context) != oldIsSyncDisabled) {
-                        MessagingController messagingController = DI.get(MessagingController.class);
-                        messagingController.systemStatusChanged();
-                    }
                 } finally {
                     // Making absolutely sure stopSelf() will be called
                     try {
@@ -411,27 +398,20 @@ public abstract class CoreService extends Service {
         return null;
     }
 
-    public static boolean isMailSyncDisabled(Context context){
-
-        final boolean hasConnectivity = Utility.hasConnectivity(context);
-        @SuppressLint("MissingPermission")
-        final boolean autoSync = ContentResolver.getMasterSyncAutomatically();
-        boolean doBackground = true;
-        K9.BACKGROUND_OPS bOps = K9.getBackgroundOps();
-
-        switch (bOps) {
-            case NEVER:
-                doBackground = false;
-                break;
-            case ALWAYS:
-                doBackground = true;
-                break;
-            case WHEN_CHECKED_AUTO_SYNC:
-                doBackground = autoSync;
-                break;
+    public static boolean isBackgroundSyncAllowed() {
+        K9.BACKGROUND_OPS backgroundSyncSetting = K9.getBackgroundOps();
+        switch (backgroundSyncSetting) {
+            case NEVER: {
+                return false;
+            }
+            case ALWAYS: {
+                return true;
+            }
+            case WHEN_CHECKED_AUTO_SYNC: {
+                return ContentResolver.getMasterSyncAutomatically();
+            }
         }
 
-        return !(doBackground && hasConnectivity);
-
+        throw new AssertionError("Unexpected value: " + backgroundSyncSetting);
     }
 }

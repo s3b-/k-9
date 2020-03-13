@@ -28,7 +28,6 @@ import androidx.annotation.Nullable;
 import android.text.TextUtils;
 
 import com.fsck.k9.Account;
-import com.fsck.k9.AccountStats;
 import com.fsck.k9.Clock;
 import com.fsck.k9.DI;
 import com.fsck.k9.K9;
@@ -41,8 +40,8 @@ import com.fsck.k9.mail.BodyPart;
 import com.fsck.k9.mail.FetchProfile;
 import com.fsck.k9.mail.FetchProfile.Item;
 import com.fsck.k9.mail.Flag;
-import com.fsck.k9.mail.Folder;
-import com.fsck.k9.mail.Folder.FolderType;
+import com.fsck.k9.mail.FolderType;
+import com.fsck.k9.mail.FolderClass;
 import com.fsck.k9.mail.MessageRetrievalListener;
 import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.Multipart;
@@ -52,6 +51,7 @@ import com.fsck.k9.mailstore.LocalFolder.MoreMessages;
 import com.fsck.k9.mailstore.LockableDatabase.DbCallback;
 import com.fsck.k9.mailstore.LockableDatabase.SchemaDefinition;
 import com.fsck.k9.mailstore.LockableDatabase.WrappedException;
+import com.fsck.k9.mailstore.StorageManager.InternalStorageProvider;
 import com.fsck.k9.mailstore.StorageManager.StorageProvider;
 import com.fsck.k9.message.extractors.AttachmentCounter;
 import com.fsck.k9.message.extractors.AttachmentInfoExtractor;
@@ -214,6 +214,16 @@ public class LocalStore {
 
         Clock clock = DI.get(Clock.class);
         outboxStateRepository = new OutboxStateRepository(database, clock);
+
+        // If "External storage" is selected as storage location, move database to internal storage
+        //TODO: Remove this code after 2020-12-31.
+        // If the database is still on external storage after this date, we'll just ignore it and create a new one on
+        // internal storage.
+        if (!InternalStorageProvider.ID.equals(account.getLocalStorageProviderId())) {
+            switchLocalStorage(InternalStorageProvider.ID);
+            account.setLocalStorageProviderId(InternalStorageProvider.ID);
+            getPreferences().saveAccount(account);
+        }
     }
 
     public static int getDbVersion() {
@@ -284,7 +294,7 @@ public class LocalStore {
     }
 
     public void compact() throws MessagingException {
-        if (K9.isDebug()) {
+        if (K9.isDebugLoggingEnabled()) {
             Timber.i("Before compaction size = %d", getSize());
         }
 
@@ -296,20 +306,20 @@ public class LocalStore {
             }
         });
 
-        if (K9.isDebug()) {
+        if (K9.isDebugLoggingEnabled()) {
             Timber.i("After compaction size = %d", getSize());
         }
     }
 
 
     public void clear() throws MessagingException {
-        if (K9.isDebug()) {
+        if (K9.isDebugLoggingEnabled()) {
             Timber.i("Before prune size = %d", getSize());
         }
 
         deleteAllMessageDataFromDisk();
 
-        if (K9.isDebug()) {
+        if (K9.isDebugLoggingEnabled()) {
             Timber.i("After prune / before compaction size = %d", getSize());
             Timber.i("Before clear folder count = %d", getFolderCount());
             Timber.i("Before clear message count = %d", getMessageCount());
@@ -335,7 +345,7 @@ public class LocalStore {
 
         compact();
 
-        if (K9.isDebug()) {
+        if (K9.isDebugLoggingEnabled()) {
             Timber.i("After clear message count = %d", getMessageCount());
             Timber.i("After clear size = %d", getSize());
         }
@@ -385,9 +395,9 @@ public class LocalStore {
     public List<LocalFolder> getPersonalNamespaces(boolean forceListAll) throws MessagingException {
         final List<LocalFolder> folders = new LinkedList<>();
         try {
-            database.execute(false, new DbCallback < List <? extends Folder >> () {
+            database.execute(false, new DbCallback<List<LocalFolder>>() {
                 @Override
-                public List <? extends Folder > doDbWork(final SQLiteDatabase db) throws WrappedException {
+                public List<LocalFolder> doDbWork(final SQLiteDatabase db) throws WrappedException {
                     Cursor cursor = null;
 
                     try {
@@ -904,29 +914,6 @@ public class LocalStore {
                     }
 
                     final  LocalFolder.PreferencesHolder prefHolder = folder.new PreferencesHolder();
-
-                    // When created, special folders should always be displayed
-                    // inbox should be integrated
-                    // and the inbox and drafts folders should be syncced by default
-                    if (account.isSpecialFolder(serverId)) {
-                        prefHolder.inTopGroup = true;
-                        prefHolder.displayClass = LocalFolder.FolderClass.FIRST_CLASS;
-                        if (serverId.equals(account.getInboxFolder())) {
-                            prefHolder.integrate = true;
-                            prefHolder.notifyClass = LocalFolder.FolderClass.FIRST_CLASS;
-                            prefHolder.pushClass = LocalFolder.FolderClass.FIRST_CLASS;
-                        } else {
-                            prefHolder.pushClass = LocalFolder.FolderClass.INHERITED;
-
-                        }
-                        if (serverId.equals(account.getInboxFolder()) || serverId.equals(account.getDraftsFolder())) {
-                            prefHolder.syncClass = LocalFolder.FolderClass.FIRST_CLASS;
-                        } else {
-                            prefHolder.syncClass = LocalFolder.FolderClass.NO_CLASS;
-                        }
-                    }
-                    folder.refresh(serverId, prefHolder);   // Recover settings from Preferences
-
                     db.execSQL("INSERT INTO folders (name, visible_limit, top_group, display_class, poll_class, notify_class, push_class, integrate, server_id, local_only, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", new Object[] {
                                    name,
                                    visibleLimit,
@@ -954,7 +941,7 @@ public class LocalStore {
             folder.create();
         }
         folder.setName(folderName);
-        folder.setSyncClass(Folder.FolderClass.NONE);
+        folder.setSyncClass(FolderClass.NONE);
     }
 
     static String serializeFlags(Iterable<Flag> flags) {
@@ -1293,7 +1280,7 @@ public class LocalStore {
         return folderMap;
     }
 
-    public AccountStats getAccountStats(LocalSearch search) throws MessagingException {
+    public int getUnreadMessageCount(LocalSearch search) throws MessagingException {
         StringBuilder whereBuilder = new StringBuilder();
         List<String> queryArgs = new ArrayList<>();
         SqlQueryBuilder.buildWhereClause(account, search.getConditions(), whereBuilder, queryArgs);
@@ -1301,24 +1288,22 @@ public class LocalStore {
         String where = whereBuilder.toString();
         final String[] selectionArgs = queryArgs.toArray(new String[queryArgs.size()]);
 
-        final String sqlQuery = "SELECT SUM(read=0), SUM(flagged) " +
+        final String sqlQuery = "SELECT SUM(read=0) " +
                 "FROM messages " +
                 "JOIN folders ON (folders.id = messages.folder_id) " +
                 "WHERE (messages.empty = 0 AND messages.deleted = 0)" +
                 (!TextUtils.isEmpty(where) ? " AND (" + where + ")" : "");
 
-        return database.execute(false, new DbCallback<AccountStats>() {
+        return database.execute(false, new DbCallback<Integer>() {
             @Override
-            public AccountStats doDbWork(SQLiteDatabase db) throws WrappedException, MessagingException {
+            public Integer doDbWork(SQLiteDatabase db) throws WrappedException, MessagingException {
                 Cursor cursor = db.rawQuery(sqlQuery, selectionArgs);
                 try {
-                    AccountStats accountStats = new AccountStats();
                     if (cursor.moveToFirst()) {
-                        accountStats.unreadMessageCount = cursor.getInt(0);
-                        accountStats.flaggedMessageCount = cursor.getInt(1);
+                        return cursor.getInt(0);
+                    } else {
+                        return 0;
                     }
-
-                    return accountStats;
                 } finally {
                     cursor.close();
                 }

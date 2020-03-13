@@ -1,38 +1,35 @@
 package com.fsck.k9.ui.messagelist
 
 import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.ViewModel
-import com.fsck.k9.Account
-import com.fsck.k9.mailstore.Folder
-import com.fsck.k9.mailstore.FolderRepositoryManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.async
-import kotlinx.coroutines.launch
+import androidx.lifecycle.viewModelScope
 
-class MessageListViewModel(private val folderRepositoryManager: FolderRepositoryManager) : ViewModel() {
-    private val foldersLiveData = MutableLiveData<List<Folder>>()
-    private var account: Account? = null
+class MessageListViewModel(private val messageListLiveDataFactory: MessageListLiveDataFactory) : ViewModel() {
+    private var currentMessageListLiveData: MessageListLiveData? = null
+    private val messageListLiveData = MediatorLiveData<MessageListInfo>()
 
-
-    fun getFolders(account: Account): LiveData<List<Folder>> {
-        if (foldersLiveData.value == null || this.account != account) {
-            this.account = account
-            loadFolders(account)
-        }
-
-        return foldersLiveData
+    fun getMessageListLiveData(): LiveData<MessageListInfo> {
+        return messageListLiveData
     }
 
-    private fun loadFolders(account: Account) {
-        GlobalScope.launch(Dispatchers.Main) {
-            val folders = async {
-                val folderRepository = folderRepositoryManager.getFolderRepository(account)
-                folderRepository.getDisplayFolders()
-            }.await()
+    fun loadMessageList(config: MessageListConfig) {
+        if (currentMessageListLiveData?.config == config) return
 
-            foldersLiveData.value = folders
+        removeCurrentMessageListLiveData()
+
+        val liveData = messageListLiveDataFactory.create(viewModelScope, config)
+        currentMessageListLiveData = liveData
+
+        messageListLiveData.addSource(liveData) { items ->
+            messageListLiveData.value = items
+        }
+    }
+
+    private fun removeCurrentMessageListLiveData() {
+        currentMessageListLiveData?.let {
+            currentMessageListLiveData = null
+            messageListLiveData.removeSource(it)
         }
     }
 }

@@ -8,16 +8,17 @@ import com.fsck.k9.job.K9JobManager
 import java.util.concurrent.ExecutorService
 
 class AccountSettingsDataStore(
-        private val preferences: Preferences,
-        private val executorService: ExecutorService,
-        private val account: Account,
-        private val jobManager: K9JobManager
+    private val preferences: Preferences,
+    private val executorService: ExecutorService,
+    private val account: Account,
+    private val jobManager: K9JobManager
 ) : PreferenceDataStore() {
 
     override fun getBoolean(key: String, defValue: Boolean): Boolean {
         return when (key) {
             "account_default" -> account == preferences.defaultAccount
             "mark_message_as_read_on_view" -> account.isMarkMessageAsReadOnView
+            "mark_message_as_read_on_delete" -> account.isMarkMessageAsReadOnDelete
             "account_sync_remote_deletetions" -> account.isSyncRemoteDeletions
             "push_poll_on_connect" -> account.isPushPollOnConnect
             "always_show_cc_bcc" -> account.isAlwaysShowCcBcc
@@ -51,6 +52,7 @@ class AccountSettingsDataStore(
                 return
             }
             "mark_message_as_read_on_view" -> account.isMarkMessageAsReadOnView = value
+            "mark_message_as_read_on_delete" -> account.isMarkMessageAsReadOnDelete = value
             "account_sync_remote_deletetions" -> account.isSyncRemoteDeletions = value
             "push_poll_on_connect" -> account.isPushPollOnConnect = value
             "always_show_cc_bcc" -> account.isAlwaysShowCcBcc = value
@@ -143,7 +145,6 @@ class AccountSettingsDataStore(
             "account_vibrate_pattern" -> account.notificationSetting.vibratePattern.toString()
             "account_vibrate_times" -> account.notificationSetting.vibrateTimes.toString()
             "account_remote_search_num_results" -> account.remoteSearchNumResults.toString()
-            "local_storage_provider" -> account.localStorageProviderId
             "account_ringtone" -> account.notificationSetting.ringtone
             else -> defValue
         }
@@ -193,7 +194,6 @@ class AccountSettingsDataStore(
             "account_vibrate_pattern" -> account.notificationSetting.vibratePattern = value.toInt()
             "account_vibrate_times" -> account.notificationSetting.vibrateTimes = value.toInt()
             "account_remote_search_num_results" -> account.remoteSearchNumResults = value.toInt()
-            "local_storage_provider" -> account.localStorageProviderId = value
             "account_ringtone" -> with(account.notificationSetting) {
                 isRingEnabled = true
                 ringtone = value
@@ -204,7 +204,7 @@ class AccountSettingsDataStore(
         saveSettingsInBackground()
     }
 
-    private fun saveSettingsInBackground() {
+    fun saveSettingsInBackground() {
         executorService.execute {
             saveSettings()
         }
@@ -228,8 +228,8 @@ class AccountSettingsDataStore(
     }
 
     private fun saveSpecialFolderSelection(
-            preferenceValue: String,
-            specialFolderSetter: (String?, SpecialFolderSelection) -> Unit
+        preferenceValue: String,
+        specialFolderSetter: (String?, SpecialFolderSelection) -> Unit
     ) {
         val specialFolder = extractFolderName(preferenceValue)
 
@@ -243,7 +243,7 @@ class AccountSettingsDataStore(
     }
 
     private fun loadSpecialFolder(specialFolder: String?, specialFolderSelection: SpecialFolderSelection): String {
-        val prefix =  when (specialFolderSelection) {
+        val prefix = when (specialFolderSelection) {
             SpecialFolderSelection.AUTOMATIC -> FolderListPreference.AUTOMATIC_PREFIX
             SpecialFolderSelection.MANUAL -> FolderListPreference.MANUAL_PREFIX
         }

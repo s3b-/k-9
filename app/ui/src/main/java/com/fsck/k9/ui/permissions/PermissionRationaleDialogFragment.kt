@@ -3,8 +3,8 @@ package com.fsck.k9.ui.permissions
 import android.app.AlertDialog
 import android.app.Dialog
 import android.os.Bundle
-import androidx.fragment.app.DialogFragment
 import androidx.core.os.bundleOf
+import androidx.fragment.app.DialogFragment
 import com.fsck.k9.activity.K9Activity
 import com.fsck.k9.activity.K9Activity.Permission
 import com.fsck.k9.ui.R
@@ -17,8 +17,8 @@ import com.fsck.k9.ui.R
  */
 class PermissionRationaleDialogFragment : DialogFragment() {
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
-        val args = arguments!!
-        val permissionName = args.getString(ARG_PERMISSION)
+        val args = arguments ?: error("Arguments missing")
+        val permissionName = args.getString(ARG_PERMISSION) ?: error("Missing argument '$ARG_PERMISSION'")
 
         val permission = Permission.valueOf(permissionName)
 
@@ -33,7 +33,6 @@ class PermissionRationaleDialogFragment : DialogFragment() {
             }
         }.create()
     }
-
 
     companion object {
         private const val ARG_PERMISSION = "permission"

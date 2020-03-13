@@ -8,7 +8,6 @@ import android.content.Context;
 
 import com.fsck.k9.Account;
 import com.fsck.k9.K9;
-import com.fsck.k9.mail.Folder;
 import com.fsck.k9.mail.Message;
 import com.fsck.k9.mail.PushReceiver;
 import com.fsck.k9.mail.power.WakeLock;
@@ -32,24 +31,23 @@ public class MessagingControllerPushReceiver implements PushReceiver {
         this.context = context;
     }
 
-    public void messagesFlagsChanged(Folder folder, List<Message> messages) {
-        syncFolder(folder);
+    public void messagesFlagsChanged(String folderServerId, List<Message> messages) {
+        syncFolder(folderServerId);
     }
-    public void messagesArrived(Folder folder, List<Message> messages) {
-        syncFolder(folder);
+    public void messagesArrived(String folderServerId, List<Message> messages) {
+        syncFolder(folderServerId);
     }
-    public void messagesRemoved(Folder folder, List<Message> messages) {
-        syncFolder(folder);
+    public void messagesRemoved(String folderServerId, List<Message> messages) {
+        syncFolder(folderServerId);
     }
 
-    public void syncFolder(Folder folder) {
-        Timber.v("syncFolder(%s)", folder.getServerId());
+    public void syncFolder(String folderServerId) {
+        Timber.v("syncFolder(%s)", folderServerId);
 
         final CountDownLatch latch = new CountDownLatch(1);
-        controller.synchronizeMailbox(account, folder.getServerId(), new SimpleMessagingListener() {
+        controller.synchronizeMailbox(account, folderServerId, new SimpleMessagingListener() {
             @Override
-            public void synchronizeMailboxFinished(Account account, String folderServerId,
-            int totalMessagesInMailbox, int numNewMessages) {
+            public void synchronizeMailboxFinished(Account account, String folderServerId) {
                 latch.countDown();
             }
 
@@ -58,13 +56,13 @@ public class MessagingControllerPushReceiver implements PushReceiver {
             String message) {
                 latch.countDown();
             }
-        }, folder);
+        });
 
-        Timber.v("syncFolder(%s) about to await latch release", folder.getServerId());
+        Timber.v("syncFolder(%s) about to await latch release", folderServerId);
 
         try {
             latch.await();
-            Timber.v("syncFolder(%s) got latch release", folder.getServerId());
+            Timber.v("syncFolder(%s) got latch release", folderServerId);
         } catch (Exception e) {
             Timber.e(e, "Interrupted while awaiting latch release");
         }
@@ -95,7 +93,7 @@ public class MessagingControllerPushReceiver implements PushReceiver {
         try {
             LocalStore localStore = localStoreProvider.getInstance(account);
             localFolder = localStore.getFolder(folderServerId);
-            localFolder.open(Folder.OPEN_MODE_RW);
+            localFolder.open();
             return localFolder.getPushState();
         } catch (Exception e) {
             Timber.e(e, "Unable to get push state from account %s, folder %s", account.getDescription(), folderServerId);
@@ -108,8 +106,6 @@ public class MessagingControllerPushReceiver implements PushReceiver {
     }
 
     public void setPushActive(String folderServerId, boolean enabled) {
-        for (MessagingListener l : controller.getListeners()) {
-            l.setPushActive(account, folderServerId, enabled);
-        }
+        // Nothing to do for now
     }
 }

@@ -18,14 +18,12 @@ import java.util.Map;
 
 import com.fsck.k9.mail.CertificateValidationException;
 import com.fsck.k9.mail.ConnectionSecurity;
-import com.fsck.k9.mail.Folder;
-import com.fsck.k9.mail.Folder.FolderType;
+import com.fsck.k9.mail.FolderType;
 import com.fsck.k9.mail.K9MailLib;
 import com.fsck.k9.mail.Message;
 import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.filter.Base64;
 import com.fsck.k9.mail.ssl.TrustManagerFactory;
-import com.fsck.k9.mail.store.RemoteStore;
 import com.fsck.k9.mail.store.StoreConfig;
 import com.fsck.k9.mail.store.webdav.WebDavHttpClient.WebDavHttpClientFactory;
 import javax.net.ssl.SSLException;
@@ -61,7 +59,8 @@ import static com.fsck.k9.mail.helper.UrlEncodingHelper.decodeUtf8;
  * </pre>
  */
 @SuppressWarnings("deprecation")
-public class WebDavStore extends RemoteStore {
+public class WebDavStore {
+    private final StoreConfig storeConfig;
     private ConnectionSecurity mConnectionSecurity;
     private String username;
     private String alias;
@@ -82,7 +81,7 @@ public class WebDavStore extends RemoteStore {
     private short authenticationType = WebDavConstants.AUTH_TYPE_NONE;
     private String cachedLoginUrl;
 
-    private Folder sendFolder = null;
+    private WebDavFolder sendFolder = null;
     private Map<String, WebDavFolder> folderList = new HashMap<>();
 
     public WebDavStore(TrustManagerFactory trustManagerFactory, WebDavStoreSettings serverSettings, StoreConfig storeConfig) {
@@ -91,7 +90,7 @@ public class WebDavStore extends RemoteStore {
 
     public WebDavStore(TrustManagerFactory trustManagerFactory, WebDavStoreSettings serverSettings, StoreConfig storeConfig,
             WebDavHttpClientFactory clientFactory) {
-        super(storeConfig, null);
+        this.storeConfig = storeConfig;
         httpClientFactory = clientFactory;
         this.trustManagerFactory = trustManagerFactory;
 
@@ -154,17 +153,15 @@ public class WebDavStore extends RemoteStore {
     }
 
     StoreConfig getStoreConfig() {
-        return mStoreConfig;
+        return storeConfig;
     }
 
-    @Override
     public void checkSettings() throws MessagingException {
         authenticate();
     }
 
-    @Override
-    public List<? extends Folder> getPersonalNamespaces() throws MessagingException {
-        List<Folder> folderList = new LinkedList<>();
+    public List<WebDavFolder> getPersonalNamespaces() throws MessagingException {
+        List<WebDavFolder> folderList = new LinkedList<>();
         /*
          * We have to check authentication here so we have the proper URL stored
          */
@@ -272,7 +269,6 @@ public class WebDavStore extends RemoteStore {
         return null;
     }
 
-    @Override
     public WebDavFolder getFolder(String name) {
         WebDavFolder folder = this.folderList.get(name);
 
@@ -284,22 +280,12 @@ public class WebDavStore extends RemoteStore {
         return folder;
     }
 
-    private Folder getSendSpoolFolder() {
+    private WebDavFolder getSendSpoolFolder() {
         if (sendFolder == null) {
             sendFolder = getFolder(WebDavConstants.DAV_MAIL_SEND_FOLDER);
         }
 
         return sendFolder;
-    }
-
-    @Override
-    public boolean isMoveCapable() {
-        return true;
-    }
-
-    @Override
-    public boolean isCopyCapable() {
-        return true;
     }
 
     private String getSpecialFoldersList() {
@@ -948,11 +934,10 @@ public class WebDavStore extends RemoteStore {
         return dataset;
     }
 
-    @Override
     public void sendMessages(List<? extends Message> messages) throws MessagingException {
-        WebDavFolder tmpFolder = getFolder(mStoreConfig.getDraftsFolder());
+        WebDavFolder tmpFolder = getFolder(storeConfig.getDraftsFolder());
         try {
-            tmpFolder.open(Folder.OPEN_MODE_RW);
+            tmpFolder.open();
             List<? extends Message> retMessages = tmpFolder.appendWebDavMessages(messages);
 
             tmpFolder.moveMessages(retMessages, getSendSpoolFolder());

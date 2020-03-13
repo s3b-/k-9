@@ -30,12 +30,13 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.Toast;
 
 import com.fsck.k9.Account;
+import com.fsck.k9.DI;
 import com.fsck.k9.K9;
 import com.fsck.k9.Preferences;
-import com.fsck.k9.activity.ChooseFolder;
-import com.fsck.k9.activity.K9ActivityCommon;
+import com.fsck.k9.ui.choosefolder.ChooseFolderActivity;
 import com.fsck.k9.activity.MessageLoaderHelper;
 import com.fsck.k9.activity.MessageLoaderHelper.MessageLoaderCallbacks;
+import com.fsck.k9.activity.MessageLoaderHelperFactory;
 import com.fsck.k9.controller.MessageReference;
 import com.fsck.k9.controller.MessagingController;
 import com.fsck.k9.fragment.AttachmentDownloadDialogFragment;
@@ -46,6 +47,7 @@ import com.fsck.k9.mailstore.AttachmentViewInfo;
 import com.fsck.k9.mailstore.LocalMessage;
 import com.fsck.k9.mailstore.MessageViewInfo;
 import com.fsck.k9.ui.R;
+import com.fsck.k9.ui.ThemeManager;
 import com.fsck.k9.ui.messageview.CryptoInfoDialog.OnClickShowCryptoKeyListener;
 import com.fsck.k9.ui.messageview.MessageCryptoPresenter.MessageCryptoMvpView;
 import com.fsck.k9.ui.settings.account.AccountSettingsActivity;
@@ -76,6 +78,9 @@ public class MessageViewFragment extends Fragment implements ConfirmationDialogF
 
         return fragment;
     }
+
+    private final ThemeManager themeManager = DI.get(ThemeManager.class);
+    private final MessageLoaderHelperFactory messageLoaderHelperFactory = DI.get(MessageLoaderHelperFactory.class);
 
     private MessageTopView mMessageView;
 
@@ -132,8 +137,8 @@ public class MessageViewFragment extends Fragment implements ConfirmationDialogF
         mController = MessagingController.getInstance(context);
         downloadManager = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
         messageCryptoPresenter = new MessageCryptoPresenter(messageCryptoMvpView);
-        messageLoaderHelper = new MessageLoaderHelper(
-                context, getLoaderManager(), getFragmentManager(), messageLoaderCallbacks);
+        messageLoaderHelper = messageLoaderHelperFactory.createForMessageView(
+                context, getLoaderManager(), getParentFragmentManager(), messageLoaderCallbacks);
         mInitialized = true;
     }
 
@@ -159,10 +164,9 @@ public class MessageViewFragment extends Fragment implements ConfirmationDialogF
     }
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
-            Bundle savedInstanceState) {
-        Context context = new ContextThemeWrapper(inflater.getContext(),
-                K9ActivityCommon.getK9ThemeResourceId(K9.getK9MessageViewTheme()));
+    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+        int messageViewThemeResourceId = themeManager.getMessageViewThemeResourceId();
+        Context context = new ContextThemeWrapper(inflater.getContext(), messageViewThemeResourceId);
         LayoutInflater layoutInflater = LayoutInflater.from(context);
         View view = layoutInflater.inflate(R.layout.message, container, false);
 
@@ -290,7 +294,7 @@ public class MessageViewFragment extends Fragment implements ConfirmationDialogF
      * Called from UI thread when user select Delete
      */
     public void onDelete() {
-        if (K9.confirmDelete() || (K9.confirmDeleteStarred() && mMessage.isSet(Flag.FLAGGED))) {
+        if (K9.isConfirmDelete() || (K9.isConfirmDeleteStarred() && mMessage.isSet(Flag.FLAGGED))) {
             showDialog(R.id.dialog_confirm_delete);
         } else {
             delete();
@@ -330,7 +334,7 @@ public class MessageViewFragment extends Fragment implements ConfirmationDialogF
             return;
         }
 
-        if (dstFolder.equals(mAccount.getSpamFolder()) && K9.confirmSpam()) {
+        if (dstFolder.equals(mAccount.getSpamFolder()) && K9.isConfirmSpam()) {
             mDstFolder = dstFolder;
             showDialog(R.id.dialog_confirm_spam);
         } else {
@@ -415,13 +419,14 @@ public class MessageViewFragment extends Fragment implements ConfirmationDialogF
         onRefile(mAccount.getSpamFolder());
     }
 
-    private void startRefileActivity(int activity) {
-        Intent intent = new Intent(getActivity(), ChooseFolder.class);
-        intent.putExtra(ChooseFolder.EXTRA_ACCOUNT, mAccount.getUuid());
-        intent.putExtra(ChooseFolder.EXTRA_CUR_FOLDER, mMessageReference.getFolderServerId());
-        intent.putExtra(ChooseFolder.EXTRA_SEL_FOLDER, mAccount.getLastSelectedFolder());
-        intent.putExtra(ChooseFolder.EXTRA_MESSAGE, mMessageReference.toIdentityString());
-        startActivityForResult(intent, activity);
+    private void startRefileActivity(int requestCode) {
+        String accountUuid = mAccount.getUuid();
+        String currentFolder = mMessageReference.getFolderServerId();
+        String scrollToFolder = mAccount.getLastSelectedFolder();
+        Intent intent = ChooseFolderActivity.buildLaunchIntent(requireActivity(), accountUuid, currentFolder,
+                scrollToFolder, false, mMessageReference);
+
+        startActivityForResult(intent, requestCode);
     }
 
     public void onPendingIntentResult(int requestCode, int resultCode, Intent data) {
@@ -459,8 +464,8 @@ public class MessageViewFragment extends Fragment implements ConfirmationDialogF
                     return;
                 }
 
-                String destFolder = data.getStringExtra(ChooseFolder.EXTRA_NEW_FOLDER);
-                String messageReferenceString = data.getStringExtra(ChooseFolder.EXTRA_MESSAGE);
+                String destFolder = data.getStringExtra(ChooseFolderActivity.RESULT_SELECTED_FOLDER);
+                String messageReferenceString = data.getStringExtra(ChooseFolderActivity.RESULT_MESSAGE_REFERENCE);
                 MessageReference ref = MessageReference.parse(messageReferenceString);
                 if (mMessageReference.equals(ref)) {
                     mAccount.setLastSelectedFolder(destFolder);
@@ -537,15 +542,15 @@ public class MessageViewFragment extends Fragment implements ConfirmationDialogF
         }
 
         fragment.setTargetFragment(this, dialogId);
-        fragment.show(getFragmentManager(), getDialogTag(dialogId));
+        fragment.show(getParentFragmentManager(), getDialogTag(dialogId));
     }
 
     private void removeDialog(int dialogId) {
-        FragmentManager fm = getFragmentManager();
-
-        if (fm == null || isRemoving() || isDetached()) {
+        if (!isAdded()) {
             return;
         }
+
+        FragmentManager fm = getParentFragmentManager();
 
         // Make sure the "show dialog" transaction has been processed when we call
         // findFragmentByTag() below. Otherwise the fragment won't be found and the dialog will
@@ -674,7 +679,7 @@ public class MessageViewFragment extends Fragment implements ConfirmationDialogF
         public void showCryptoInfoDialog(MessageCryptoDisplayStatus displayStatus, boolean hasSecurityWarning) {
             CryptoInfoDialog dialog = CryptoInfoDialog.newInstance(displayStatus, hasSecurityWarning);
             dialog.setTargetFragment(MessageViewFragment.this, 0);
-            dialog.show(getFragmentManager(), "crypto_info_dialog");
+            dialog.show(getParentFragmentManager(), "crypto_info_dialog");
         }
 
         @Override

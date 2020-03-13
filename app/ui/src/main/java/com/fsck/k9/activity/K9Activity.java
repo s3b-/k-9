@@ -13,37 +13,40 @@ import androidx.appcompat.widget.Toolbar;
 import android.view.MotionEvent;
 
 import android.view.View;
-import com.fsck.k9.activity.K9ActivityCommon.K9ActivityMagic;
-import com.fsck.k9.activity.misc.SwipeGestureDetector.OnSwipeGestureListener;
 import com.fsck.k9.ui.R;
+import com.fsck.k9.ui.ThemeManager;
 import com.fsck.k9.ui.permissions.PermissionRationaleDialogFragment;
 import timber.log.Timber;
 
 
-public abstract class K9Activity extends AppCompatActivity implements K9ActivityMagic {
+public abstract class K9Activity extends AppCompatActivity {
     public static final int PERMISSIONS_REQUEST_READ_CONTACTS  = 1;
     public static final int PERMISSIONS_REQUEST_WRITE_CONTACTS = 2;
     private static final String FRAGMENT_TAG_RATIONALE = "rationale";
 
 
-    private K9ActivityCommon mBase;
+    private final K9ActivityCommon base = new K9ActivityCommon(this, ThemeType.DEFAULT);
 
+    public ThemeManager getThemeManager() {
+        return base.getThemeManager();
+    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        mBase = K9ActivityCommon.newInstance(this);
+        base.preOnCreate();
         super.onCreate(savedInstanceState);
     }
 
     @Override
-    public boolean dispatchTouchEvent(MotionEvent event) {
-        mBase.preDispatchTouchEvent(event);
-        return super.dispatchTouchEvent(event);
+    protected void onResume() {
+        base.preOnResume();
+        super.onResume();
     }
 
     @Override
-    public void setupGestureDetector(OnSwipeGestureListener listener) {
-        mBase.setupGestureDetector(listener);
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        base.preDispatchTouchEvent(event);
+        return super.dispatchTouchEvent(event);
     }
 
     protected void setLayout(@LayoutRes int layoutResId) {

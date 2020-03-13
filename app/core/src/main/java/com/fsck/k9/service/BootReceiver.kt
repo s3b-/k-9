@@ -1,20 +1,18 @@
 package com.fsck.k9.service
 
-
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.fsck.k9.EarlyInit
 import com.fsck.k9.K9
 import com.fsck.k9.helper.K9AlarmManager
+import com.fsck.k9.inject
 import com.fsck.k9.job.K9JobManager
-import org.koin.standalone.KoinComponent
-import org.koin.standalone.inject
 import timber.log.Timber
 
-class BootReceiver : CoreReceiver(), KoinComponent {
-
+class BootReceiver : CoreReceiver(), EarlyInit {
     private val jobManager: K9JobManager by inject()
 
     override fun receive(context: Context, intent: Intent, _tmpWakeLockId: Int?): Int? {
@@ -23,10 +21,10 @@ class BootReceiver : CoreReceiver(), KoinComponent {
 
         val action = intent.action
         if (Intent.ACTION_BOOT_COMPLETED == action) {
-            //K9.setServicesEnabled(context, tmpWakeLockId);
-            //tmpWakeLockId = null;
+            // K9.setServicesEnabled(context, tmpWakeLockId);
+            // tmpWakeLockId = null;
         } else if ("com.android.sync.SYNC_CONN_STATUS_CHANGED" == action) {
-            val bOps = K9.getBackgroundOps()
+            val bOps = K9.backgroundOps
             if (bOps == K9.BACKGROUND_OPS.WHEN_CHECKED_AUTO_SYNC) {
                 jobManager.scheduleAllMailJobs()
             }
@@ -47,7 +45,6 @@ class BootReceiver : CoreReceiver(), KoinComponent {
 
             alarmMgr.set(AlarmManager.RTC_WAKEUP, atTime, pi)
         }
-
 
         return tmpWakeLockId
     }
@@ -99,5 +96,4 @@ class BootReceiver : CoreReceiver(), KoinComponent {
             }, 0))
         }
     }
-
 }

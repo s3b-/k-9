@@ -63,7 +63,8 @@ public class AccountSettings {
                 new V(1, new StringSetting("INBOX"))
         ));
         s.put("automaticCheckIntervalMinutes", Settings.versions(
-                new V(1, new IntegerResourceSetting(-1, R.array.check_frequency_values))
+                new V(1, new IntegerResourceSetting(-1, R.array.check_frequency_values)),
+                new V(61, new IntegerResourceSetting(60, R.array.check_frequency_values))
         ));
         s.put("chipColor", Settings.versions(
                 new V(1, new ColorSetting(0xFF0000FF))
@@ -104,9 +105,6 @@ public class AccountSettings {
         s.put("idleRefreshMinutes", Settings.versions(
                 new V(1, new IntegerResourceSetting(24, R.array.idle_refresh_period_values))
         ));
-        s.put("inboxFolderName", Settings.versions(
-                new V(1, new StringSetting("INBOX"))
-        ));
         s.put("led", Settings.versions(
                 new V(1, new BooleanSetting(true))
         ));
@@ -118,6 +116,9 @@ public class AccountSettings {
         ));
         s.put("markMessageAsReadOnView", Settings.versions(
                 new V(7, new BooleanSetting(true))
+        ));
+        s.put("markMessageAsReadOnDelete", Settings.versions(
+                new V(63, new BooleanSetting(true))
         ));
         s.put("maxPushFolders", Settings.versions(
                 new V(1, new IntegerRangeSetting(0, 100, 10))

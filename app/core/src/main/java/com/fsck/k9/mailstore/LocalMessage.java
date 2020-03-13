@@ -5,6 +5,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Date;
+import java.util.Objects;
 
 import android.content.ContentValues;
 import android.database.Cursor;
@@ -12,11 +13,10 @@ import android.database.sqlite.SQLiteDatabase;
 import androidx.annotation.VisibleForTesting;
 
 import com.fsck.k9.Account;
-import com.fsck.k9.core.BuildConfig;
+import com.fsck.k9.K9;
 import com.fsck.k9.controller.MessageReference;
 import com.fsck.k9.mail.Address;
 import com.fsck.k9.mail.Flag;
-import com.fsck.k9.mail.Folder;
 import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.internet.AddressHeaderBuilder;
 import com.fsck.k9.mail.internet.MimeMessage;
@@ -41,13 +41,10 @@ public class LocalMessage extends MimeMessage {
     private String mimeType;
     private PreviewType previewType;
     private boolean headerNeedsUpdating = false;
+    private LocalFolder mFolder;
 
 
-    private LocalMessage(LocalStore localStore) {
-        this.localStore = localStore;
-    }
-
-    LocalMessage(LocalStore localStore, String uid, Folder folder) {
+    LocalMessage(LocalStore localStore, String uid, LocalFolder folder) {
         this.localStore = localStore;
         this.mUid = uid;
         this.mFolder = folder;
@@ -102,7 +99,7 @@ public class LocalMessage extends MimeMessage {
 
         if (this.mFolder == null) {
             LocalFolder f = new LocalFolder(this.localStore, cursor.getInt(LocalStore.MSG_INDEX_FOLDER_ID));
-            f.open(LocalFolder.OPEN_MODE_RW);
+            f.open();
             this.mFolder = f;
         }
 
@@ -340,8 +337,8 @@ public class LocalMessage extends MimeMessage {
     }
 
     public void debugClearLocalData() throws MessagingException {
-        if (!BuildConfig.DEBUG) {
-            throw new AssertionError("method must only be used in debug build!");
+        if (!K9.DEVELOPER_MODE) {
+            throw new AssertionError("method must only be used in developer mode!");
         }
 
         try {
@@ -401,9 +398,8 @@ public class LocalMessage extends MimeMessage {
         return messageReference;
     }
 
-    @Override
     public LocalFolder getFolder() {
-        return (LocalFolder) super.getFolder();
+        return mFolder;
     }
 
     public String getUri() {
@@ -455,20 +451,22 @@ public class LocalMessage extends MimeMessage {
         if (o == null || getClass() != o.getClass()) {
             return false;
         }
-        if (!super.equals(o)) {
-            return false;
-        }
 
-        // distinguish by account uuid, in addition to what Message.equals() does above
-        String thisAccountUuid = getAccountUuid();
-        String thatAccountUuid = ((LocalMessage) o).getAccountUuid();
-        return thisAccountUuid != null ? thisAccountUuid.equals(thatAccountUuid) : thatAccountUuid == null;
+        LocalMessage other = (LocalMessage) o;
+        return Objects.equals(mUid, other.mUid) &&
+                Objects.equals(mFolder, other.mFolder) &&
+                Objects.equals(getAccountUuid(), other.getAccountUuid());
     }
 
     @Override
     public int hashCode() {
-        int result = super.hashCode();
-        result = 31 * result + (getAccountUuid() != null ? getAccountUuid().hashCode() : 0);
+        final int MULTIPLIER = 31;
+
+        int result = 1;
+        String accountUuid = getAccountUuid();
+        result = MULTIPLIER * result + (accountUuid != null ? accountUuid.hashCode() : 0);
+        result = MULTIPLIER * result + (mFolder != null ? mFolder.hashCode() : 0);
+        result = MULTIPLIER * result + mUid.hashCode();
         return result;
     }
 

@@ -4,20 +4,19 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
+import android.view.Menu
+import android.view.MenuItem
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceFragmentCompat.OnPreferenceStartScreenCallback
 import androidx.preference.PreferenceScreen
-import android.view.Menu
-import android.view.MenuItem
 import com.bytehamster.lib.preferencesearch.SearchPreferenceActionView
 import com.bytehamster.lib.preferencesearch.SearchPreferenceResult
 import com.bytehamster.lib.preferencesearch.SearchPreferenceResultListener
 import com.fsck.k9.activity.K9Activity
-import com.fsck.k9.activity.setup.FontSizeSettings
 import com.fsck.k9.ui.R
 import com.fsck.k9.ui.fragmentTransaction
 import com.fsck.k9.ui.fragmentTransactionWithBackStack
-import com.fsck.k9.ui.resolveAttribute
+import com.fsck.k9.ui.resolveColorAttribute
 
 class GeneralSettingsActivity : K9Activity(), OnPreferenceStartScreenCallback, SearchPreferenceResultListener {
     private lateinit var searchPreferenceActionView: SearchPreferenceActionView
@@ -36,8 +35,8 @@ class GeneralSettingsActivity : K9Activity(), OnPreferenceStartScreenCallback, S
                 add(R.id.generalSettingsContainer, GeneralSettingsFragment.create())
             }
         } else {
-            searchQuery = savedInstanceState.getString(KEY_SEARCH_QUERY)
-            searchEnabled = savedInstanceState.getBoolean(KEY_SEARCH_ENABLED)
+            searchQuery = savedInstanceState.getString(KEY_SEARCH_QUERY, "")
+            searchEnabled = savedInstanceState.getBoolean(KEY_SEARCH_ENABLED, false)
         }
     }
 
@@ -47,28 +46,25 @@ class GeneralSettingsActivity : K9Activity(), OnPreferenceStartScreenCallback, S
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putString(KEY_SEARCH_QUERY, searchPreferenceActionView.query.toString())
-        outState.putBoolean(KEY_SEARCH_ENABLED, !searchPreferenceActionView.isIconified)
-        searchPreferenceActionView.onBackPressed()
+        if (::searchPreferenceActionView.isInitialized) {
+            outState.putString(KEY_SEARCH_QUERY, searchPreferenceActionView.query.toString())
+            outState.putBoolean(KEY_SEARCH_ENABLED, !searchPreferenceActionView.isIconified)
+        }
         super.onSaveInstanceState(outState)
     }
 
     override fun onSearchResultClicked(result: SearchPreferenceResult) {
-        searchPreferenceActionView.close()
+        searchPreferenceActionView.cancelSearch()
         searchPreferenceMenuItem.collapseActionView()
 
-        if (result.resourceFile == R.xml.font_preferences) {
-            startActivity(Intent(this, FontSizeSettings::class.java))
-        } else {
-            val fragment = GeneralSettingsFragment.create(result.screen)
-            fragmentTransaction {
-                addToBackStack("Search result")
-                replace(R.id.generalSettingsContainer, fragment)
-            }
-
-            val accentColor = theme.resolveAttribute(R.attr.colorAccent)
-            result.highlight(fragment as PreferenceFragmentCompat, accentColor)
+        val fragment = GeneralSettingsFragment.create(result.screen)
+        fragmentTransaction {
+            addToBackStack("Search result")
+            replace(R.id.generalSettingsContainer, fragment)
         }
+
+        val accentColor = theme.resolveColorAttribute(R.attr.colorAccent)
+        result.highlight(fragment as PreferenceFragmentCompat, accentColor)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -82,20 +78,15 @@ class GeneralSettingsActivity : K9Activity(), OnPreferenceStartScreenCallback, S
             setFragmentContainerViewId(R.id.generalSettingsContainer)
             setBreadcrumbsEnabled(true)
             setFuzzySearchEnabled(true)
+            textHint = getString(R.string.search_action)
+            textNoResults = getString(R.string.preference_search_no_results)
 
-            with(index()) {
-                addFile(R.xml.general_settings)
-                addBreadcrumb(R.string.general_settings_title)
-                addBreadcrumb(R.string.display_preferences)
-                addBreadcrumb(R.string.global_preferences)
-                addBreadcrumb(R.string.font_size_settings_title)
-                addFile(R.xml.font_preferences)
-            }
+            index(R.xml.general_settings)
         }
 
         searchPreferenceMenuItem.setOnActionExpandListener(object : MenuItem.OnActionExpandListener {
             override fun onMenuItemActionCollapse(item: MenuItem): Boolean {
-                searchPreferenceActionView.onBackPressed()
+                searchPreferenceActionView.cancelSearch()
                 return true
             }
 
@@ -125,13 +116,14 @@ class GeneralSettingsActivity : K9Activity(), OnPreferenceStartScreenCallback, S
     }
 
     override fun onBackPressed() {
-        if (!searchPreferenceActionView.onBackPressed()) {
+        if (!searchPreferenceActionView.cancelSearch()) {
             super.onBackPressed()
         }
     }
 
     override fun onPreferenceStartScreen(
-            caller: PreferenceFragmentCompat, preferenceScreen: PreferenceScreen
+        caller: PreferenceFragmentCompat,
+        preferenceScreen: PreferenceScreen
     ): Boolean {
         fragmentTransactionWithBackStack {
             replace(R.id.generalSettingsContainer, GeneralSettingsFragment.create(preferenceScreen.key))
@@ -139,7 +131,6 @@ class GeneralSettingsActivity : K9Activity(), OnPreferenceStartScreenCallback, S
 
         return true
     }
-
 
     companion object {
         private const val KEY_SEARCH_QUERY = "search_query"

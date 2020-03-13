@@ -20,10 +20,10 @@ import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.PushReceiver;
 import com.fsck.k9.mail.power.PowerManager;
 import com.fsck.k9.mail.power.WakeLock;
-import com.fsck.k9.mail.store.RemoteStore;
 import timber.log.Timber;
 
 import static com.fsck.k9.mail.K9MailLib.PUSH_WAKE_LOCK_TIMEOUT;
+import static com.fsck.k9.mail.NetworkTimeouts.SOCKET_READ_TIMEOUT;
 import static com.fsck.k9.mail.store.imap.ImapResponseParser.equalsIgnoreCase;
 
 
@@ -587,12 +587,12 @@ class ImapFolderPusher extends ImapFolder {
 
                     List<Message> messages = new ArrayList<>();
                     for (long uid = startUid; uid <= newUid; uid++) {
-                        ImapMessage message = new ImapMessage(Long.toString(uid), ImapFolderPusher.this);
+                        ImapMessage message = new ImapMessage(Long.toString(uid));
                         messages.add(message);
                     }
 
                     if (!messages.isEmpty()) {
-                        pushReceiver.messagesArrived(ImapFolderPusher.this, messages);
+                        pushReceiver.messagesArrived(getServerId(), messages);
                     }
                 }
             }
@@ -604,7 +604,7 @@ class ImapFolderPusher extends ImapFolder {
                 List<? extends Message> messageList = getMessages(messageSeqSet, true, null);
 
                 List<Message> messages = new ArrayList<>(messageList);
-                pushReceiver.messagesFlagsChanged(ImapFolderPusher.this, messages);
+                pushReceiver.messagesFlagsChanged(getServerId(), messages);
             } catch (Exception e) {
                 pushReceiver.pushError("Exception while processing Push untagged responses", e);
             }
@@ -626,10 +626,10 @@ class ImapFolderPusher extends ImapFolder {
                 }
 
                 for (String uid : removeUids) {
-                    ImapMessage message = new ImapMessage(uid, ImapFolderPusher.this);
+                    ImapMessage message = new ImapMessage(uid);
 
                     try {
-                        message.setFlagInternal(Flag.DELETED, true);
+                        message.setFlag(Flag.DELETED, true);
                     } catch (MessagingException me) {
                         Timber.e("Unable to set DELETED flag on message %s", message.getUid());
                     }
@@ -637,7 +637,7 @@ class ImapFolderPusher extends ImapFolder {
                     messages.add(message);
                 }
 
-                pushReceiver.messagesRemoved(ImapFolderPusher.this, messages);
+                pushReceiver.messagesRemoved(getServerId(), messages);
             } catch (Exception e) {
                 Timber.e("Cannot remove EXPUNGEd messages");
             }
@@ -650,7 +650,7 @@ class ImapFolderPusher extends ImapFolder {
                 throw new MessagingException("Message count = -1 for idling");
             }
 
-            pushReceiver.syncFolder(ImapFolderPusher.this);
+            pushReceiver.syncFolder(getServerId());
         }
 
         private void notifyMessagesArrived(long startUid, long uidNext) {
@@ -662,11 +662,11 @@ class ImapFolderPusher extends ImapFolder {
             List<Message> messages = new ArrayList<>(count);
 
             for (long uid = startUid; uid < uidNext; uid++) {
-                ImapMessage message = new ImapMessage(Long.toString(uid), ImapFolderPusher.this);
+                ImapMessage message = new ImapMessage(Long.toString(uid));
                 messages.add(message);
             }
 
-            pushReceiver.messagesArrived(ImapFolderPusher.this, messages);
+            pushReceiver.messagesArrived(getServerId(), messages);
         }
 
         private long getOldUidNext() {
@@ -718,7 +718,7 @@ class ImapFolderPusher extends ImapFolder {
 
         private void sendDone() {
             try {
-                imapConnection.setReadTimeout(RemoteStore.SOCKET_READ_TIMEOUT);
+                imapConnection.setReadTimeout(SOCKET_READ_TIMEOUT);
                 imapConnection.sendContinuation("DONE");
             } catch (IOException e) {
                 imapConnection.close();

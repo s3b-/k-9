@@ -6,12 +6,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.Socket;
-import java.util.List;
 
 import com.fsck.k9.mail.AuthType;
 import com.fsck.k9.mail.AuthenticationFailedException;
 import com.fsck.k9.mail.ConnectionSecurity;
-import com.fsck.k9.mail.Folder;
 import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.ServerSettings;
 import com.fsck.k9.mail.filter.Base64;
@@ -21,7 +19,6 @@ import org.junit.Before;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyInt;
@@ -88,21 +85,6 @@ public class Pop3StoreTest {
         assertEquals("TestFolder", folder.getServerId());
     }
 
-    @Test
-    public void getPersonalNamespace_shouldReturnListConsistingOfInbox() throws Exception {
-        List<Pop3Folder> folders = store.getPersonalNamespaces();
-
-        assertEquals(1, folders.size());
-        assertEquals("INBOX", folders.get(0).getServerId());
-    }
-
-    @Test
-    public void isSeenFlagSupported_shouldReturnFalse() throws Exception {
-        boolean result = store.isSeenFlagSupported();
-
-        assertFalse(result);
-    }
-
     @Test(expected = MessagingException.class)
     public void checkSetting_whenConnectionThrowsException_shouldThrowMessagingException()
             throws Exception {
@@ -155,7 +137,7 @@ public class Pop3StoreTest {
         when(mockSocket.getOutputStream()).thenReturn(byteArrayOutputStream);
         Pop3Folder folder = store.getFolder(Pop3Folder.INBOX);
 
-        folder.open(Folder.OPEN_MODE_RW);
+        folder.open();
 
         assertEquals(20, folder.getMessageCount());
         assertEquals(AUTH + CAPA + AUTH_PLAIN_WITH_LOGIN + STAT, byteArrayOutputStream.toString("UTF-8"));
@@ -170,7 +152,7 @@ public class Pop3StoreTest {
         when(mockSocket.getInputStream()).thenReturn(new ByteArrayInputStream(response.getBytes("UTF-8")));
         Pop3Folder folder = store.getFolder(Pop3Folder.INBOX);
 
-        folder.open(Folder.OPEN_MODE_RW);
+        folder.open();
     }
 
     private ServerSettings createServerSettings() {
